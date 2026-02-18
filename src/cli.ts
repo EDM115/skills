@@ -484,9 +484,11 @@ async function runUpdate(): Promise<void> {
       installUrl = `${installUrl}/tree/main/${skillFolder}`;
     }
 
-    // Use skills CLI to reinstall with -g -y flags
-    const result = spawnSync('npx', ['-y', 'skills', 'add', installUrl, '-g', '-y'], {
+    // Reinstall using the current CLI entrypoint directly (avoid nested npm exec/npx)
+    const cliEntry = join(__dirname, '..', 'bin', 'cli.mjs');
+    const result = spawnSync(process.execPath, [cliEntry, 'add', installUrl, '-g', '-y'], {
       stdio: ['inherit', 'pipe', 'pipe'],
+      encoding: 'utf-8',
     });
 
     if (result.status === 0) {
