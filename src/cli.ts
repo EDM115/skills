@@ -383,6 +383,11 @@ async function runCheck(args: string[] = []): Promise<void> {
   if (errors.length > 0) {
     console.log();
     console.log(`${DIM}Could not check ${errors.length} skill(s) (may need reinstall)${RESET}`);
+    console.log();
+    for (const error of errors) {
+      console.log(`  ${DIM}✗${RESET} ${error.name}`);
+      console.log(`    ${DIM}source: ${error.source}${RESET}`);
+    }
   }
 
   // Track telemetry
