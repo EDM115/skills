@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'child_process';
-import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
-import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { runAdd, parseAddOptions, initTelemetry } from './add.ts';
 import { runFind } from './find.ts';
@@ -253,7 +252,6 @@ Describe when this skill should be used.
 
 const AGENTS_DIR = '.agents';
 const LOCK_FILE = '.skill-lock.json';
-const CHECK_UPDATES_API_URL = 'https://add-skill.vercel.sh/check-updates';
 const CURRENT_LOCK_VERSION = 3; // Bumped from 2 to 3 for folder hash support
 
 interface SkillLockEntry {
@@ -270,29 +268,6 @@ interface SkillLockEntry {
 interface SkillLockFile {
   version: number;
   skills: Record<string, SkillLockEntry>;
-}
-
-interface CheckUpdatesRequest {
-  skills: Array<{
-    name: string;
-    source: string;
-    path?: string;
-    skillFolderHash: string;
-  }>;
-}
-
-interface CheckUpdatesResponse {
-  updates: Array<{
-    name: string;
-    source: string;
-    currentHash: string;
-    latestHash: string;
-  }>;
-  errors?: Array<{
-    name: string;
-    source: string;
-    error: string;
-  }>;
 }
 
 function getSkillLockPath(): string {
@@ -316,15 +291,6 @@ function readSkillLock(): SkillLockFile {
   } catch {
     return { version: CURRENT_LOCK_VERSION, skills: {} };
   }
-}
-
-function writeSkillLock(lock: SkillLockFile): void {
-  const lockPath = getSkillLockPath();
-  const dir = join(homedir(), AGENTS_DIR);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  writeFileSync(lockPath, JSON.stringify(lock, null, 2), 'utf-8');
 }
 
 async function runCheck(args: string[] = []): Promise<void> {
