@@ -486,6 +486,13 @@ async function runUpdate(): Promise<void> {
 
     // Reinstall using the current CLI entrypoint directly (avoid nested npm exec/npx)
     const cliEntry = join(__dirname, '..', 'bin', 'cli.mjs');
+    if (!existsSync(cliEntry)) {
+      failCount++;
+      console.log(
+        `  ${DIM}✗ Failed to update ${update.name}: CLI entrypoint not found at ${cliEntry}${RESET}`
+      );
+      continue;
+    }
     const result = spawnSync(process.execPath, [cliEntry, 'add', installUrl, '-g', '-y'], {
       stdio: ['inherit', 'pipe', 'pipe'],
       encoding: 'utf-8',

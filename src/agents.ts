@@ -123,6 +123,15 @@ export const agents: Record<AgentType, AgentConfig> = {
       return existsSync(join(process.cwd(), '.continue')) || existsSync(join(home, '.continue'));
     },
   },
+  cortex: {
+    name: 'cortex',
+    displayName: 'Cortex Code',
+    skillsDir: '.cortex/skills',
+    globalSkillsDir: join(home, '.snowflake/cortex/skills'),
+    detectInstalled: async () => {
+      return existsSync(join(home, '.snowflake/cortex'));
+    },
+  },
   crush: {
     name: 'crush',
     displayName: 'Crush',
@@ -135,7 +144,7 @@ export const agents: Record<AgentType, AgentConfig> = {
   cursor: {
     name: 'cursor',
     displayName: 'Cursor',
-    skillsDir: '.cursor/skills',
+    skillsDir: '.agents/skills',
     globalSkillsDir: join(home, '.cursor/skills'),
     detectInstalled: async () => {
       return existsSync(join(home, '.cursor'));
@@ -384,6 +393,14 @@ export const agents: Record<AgentType, AgentConfig> = {
     detectInstalled: async () => {
       return existsSync(join(home, '.adal'));
     },
+  },
+  universal: {
+    name: 'universal',
+    displayName: 'Universal',
+    skillsDir: '.agents/skills',
+    globalSkillsDir: join(configHome, 'agents/skills'),
+    showInUniversalList: false,
+    detectInstalled: async () => false,
   },
 };
 

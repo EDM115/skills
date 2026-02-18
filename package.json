@@ -46,6 +46,7 @@
     "codex",
     "command-code",
     "continue",
+    "cortex",
     "crush",
     "cursor",
     "droid",
@@ -74,7 +75,8 @@
     "zencoder",
     "neovate",
     "pochi",
-    "adal"
+    "adal",
+    "universal"
   ],
   "repository": {
     "type": "git",
