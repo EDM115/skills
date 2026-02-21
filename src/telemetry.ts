@@ -46,12 +46,20 @@ interface FindTelemetryData {
   interactive?: '1';
 }
 
+interface SyncTelemetryData {
+  event: 'experimental_sync';
+  skillCount: string;
+  successCount: string;
+  agents: string;
+}
+
 type TelemetryData =
   | InstallTelemetryData
   | RemoveTelemetryData
   | CheckTelemetryData
   | UpdateTelemetryData
-  | FindTelemetryData;
+  | FindTelemetryData
+  | SyncTelemetryData;
 
 let cliVersion: string | null = null;
 

@@ -8,24 +8,18 @@ This file provides guidance to AI coding agents working on the `skills` CLI code
 
 ## Commands
 
-| Command                  | Description                                         |
-| ------------------------ | --------------------------------------------------- |
-| `skills`                 | Show banner with available commands                 |
-| `skills init [name]`     | Create a new SKILL.md template                      |
-| `skills add <pkg>`       | Install skills from git repos, URLs, or local paths |
-| `skills find [query]`    | Search skills interactively or by keyword           |
-| `skills list`            | List installed skills (alias: `ls`)                 |
-| `skills remove [skills]` | Remove installed skills (aliases: `rm`, `r`)        |
-| `skills check`           | Check for available skill updates                   |
-| `skills update`          | Update all skills to latest versions                |
+| Command                       | Description                                         |
+| ----------------------------- | --------------------------------------------------- |
+| `skills`                      | Show banner with available commands                 |
+| `skills add <pkg>`            | Install skills from git repos, URLs, or local paths |
+| `skills experimental_install` | Restore skills from skills-lock.json                |
+| `skills experimental_sync`    | Sync skills from node_modules into agent dirs       |
+| `skills list`                 | List installed skills (alias: `ls`)                 |
+| `skills check`                | Check for available skill updates                   |
+| `skills update`               | Update all skills to latest versions                |
+| `skills init [name]`          | Create a new SKILL.md template                      |
 
-Aliases:
-
-- `skills a`, `skills i`, `skills install` → `add`
-- `skills f`, `skills s`, `skills search` → `find`
-- `skills ls` → `list`
-- `skills rm`, `skills r` → `remove`
-- `skills upgrade` → `update`
+Aliases: `skills a` works for `add`. `skills i`, `skills install` (no args) restore from `skills-lock.json`. `skills ls` works for `list`. `skills experimental_install` restores from `skills-lock.json`. `skills experimental_sync` crawls `node_modules` for skills.
 
 ## Architecture
 
@@ -45,7 +39,9 @@ src/
 ├── agents.ts        # Agent definitions and detection
 ├── installer.ts     # Skill installation logic (symlink/copy) + listInstalledSkills
 ├── skills.ts        # Skill discovery and parsing
-├── skill-lock.ts    # Lock file management
+├── skill-lock.ts    # Global lock file management (~/.agents/.skill-lock.json)
+├── local-lock.ts    # Local lock file management (skills-lock.json, checked in)
+├── sync.ts          # Sync command - crawl node_modules for skills
 ├── source-parser.ts # Parse git URLs, GitHub shorthand, local paths
 ├── git.ts           # Git clone operations
 ├── telemetry.ts     # Anonymous usage tracking
@@ -99,11 +95,12 @@ If reading an older lock file version, it's wiped. Users must reinstall skills t
 
 ## Key Integration Points
 
-| Feature         | Implementation                                                |
-| --------------- | ------------------------------------------------------------- |
-| `skills add`    | `src/add.ts` - full implementation                            |
-| `skills check`  | `src/cli.ts` + `fetchSkillFolderHash` in `src/skill-lock.ts`  |
-| `skills update` | `src/cli.ts` direct hash compare + reinstall via `skills add` |
+| Feature                    | Implementation                                                |
+| -------------------------- | ------------------------------------------------------------- |
+| `skills add`               | `src/add.ts` - full implementation                            |
+| `skills experimental_sync` | `src/sync.ts` - crawl node_modules                            |
+| `skills check`             | `src/cli.ts` + `fetchSkillFolderHash` in `src/skill-lock.ts`  |
+| `skills update`            | `src/cli.ts` direct hash compare + reinstall via `skills add` |
 
 ## Development
 
@@ -116,6 +113,7 @@ pnpm build
 
 # Test locally
 pnpm dev add vercel-labs/agent-skills --list
+pnpm dev experimental_sync
 pnpm dev check
 pnpm dev update
 pnpm dev init my-skill

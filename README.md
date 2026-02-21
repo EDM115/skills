@@ -39,9 +39,10 @@ npx skills add ./my-local-skills
 | Option                    | Description                                                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-g, --global`            | Install to user directory instead of project                                                                                                       |
-| `-a, --agent <agents...>` | <!-- agent-names:start -->Target specific agents (e.g., `claude-code`, `codex`). See [Available Agents](#supported-agents)<!-- agent-names:end --> |
+| `-a, --agent <agents...>` | <!-- agent-names:start -->Target specific agents (e.g., `claude-code`, `codex`). See [Supported Agents](#supported-agents)<!-- agent-names:end --> |
 | `-s, --skill <skills...>` | Install specific skills by name (use `'*'` for all skills)                                                                                         |
 | `-l, --list`              | List available skills without installing                                                                                                           |
+| `--copy`                  | Copy files instead of symlinking to agent directories                                                                                              |
 | `-y, --yes`               | Skip all confirmation prompts                                                                                                                      |
 | `--all`                   | Install all skills to all agents without prompts                                                                                                   |
 
@@ -357,11 +358,13 @@ If `.claude-plugin/marketplace.json` or `.claude-plugin/plugin.json` exists, ski
 // .claude-plugin/marketplace.json
 {
   "metadata": { "pluginRoot": "./plugins" },
-  "plugins": [{
-    "name": "my-plugin",
-    "source": "my-plugin",
-    "skills": ["./skills/review", "./skills/test"]
-  }]
+  "plugins": [
+    {
+      "name": "my-plugin",
+      "source": "my-plugin",
+      "skills": ["./skills/review", "./skills/test"]
+    }
+  ]
 }
 ```
 

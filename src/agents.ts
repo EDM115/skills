@@ -42,9 +42,7 @@ export const agents: Record<AgentType, AgentConfig> = {
     skillsDir: '.agent/skills',
     globalSkillsDir: join(home, '.gemini/antigravity/skills'),
     detectInstalled: async () => {
-      return (
-        existsSync(join(process.cwd(), '.agent')) || existsSync(join(home, '.gemini/antigravity'))
-      );
+      return existsSync(join(home, '.gemini/antigravity'));
     },
   },
   augment: {
@@ -174,7 +172,7 @@ export const agents: Record<AgentType, AgentConfig> = {
     skillsDir: '.agents/skills',
     globalSkillsDir: join(home, '.copilot/skills'),
     detectInstalled: async () => {
-      return existsSync(join(process.cwd(), '.github')) || existsSync(join(home, '.copilot'));
+      return existsSync(join(home, '.copilot'));
     },
   },
   goose: {
@@ -273,7 +271,7 @@ export const agents: Record<AgentType, AgentConfig> = {
     skillsDir: '.agents/skills',
     globalSkillsDir: join(configHome, 'opencode/skills'),
     detectInstalled: async () => {
-      return existsSync(join(configHome, 'opencode')) || existsSync(join(claudeHome, 'skills'));
+      return existsSync(join(configHome, 'opencode'));
     },
   },
   openhands: {
@@ -319,7 +317,7 @@ export const agents: Record<AgentType, AgentConfig> = {
     globalSkillsDir: join(configHome, 'agents/skills'),
     showInUniversalList: false,
     detectInstalled: async () => {
-      return existsSync(join(process.cwd(), '.agents'));
+      return existsSync(join(process.cwd(), '.replit'));
     },
   },
   roo: {
