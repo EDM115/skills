@@ -4,8 +4,16 @@ Skills generated for my own purpose, created because nobody made them before
 
 ## Usage
 
+### Select skills
+
 ```zsh
-pnpm dlx skills add EDM115/<skill-name>
+pnpm dlx skills add EDM115/skills
+```
+
+### Install a specific skill
+
+```zsh
+pnpm dlx skills add EDM115/skills --skill pyrofork-best-practices
 ```
 
 ## Skills available
