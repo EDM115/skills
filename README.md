@@ -1,15 +1,17 @@
 # `EDM115/skills`
 Skills generated for my own purpose, created because nobody made them before
 
+[![skills.sh](https://skills.sh/b/EDM115/skills)](https://skills.sh/EDM115/skills)
+
 ## Usage
 ### Select skills
 ```zsh
-pnpm dlx skills add EDM115/skills
+pnpx skills add EDM115/skills
 ```
 
 ### Install a specific skill
 ```zsh
-pnpm dlx skills add EDM115/skills --skill pyrofork-best-practices
+pnpx skills add EDM115/skills --skill rtk
 ```
 
 ## Skills available
