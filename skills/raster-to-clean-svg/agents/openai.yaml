@@ -1,0 +1,4 @@
+interface:
+  display_name: "Raster to Clean SVG"
+  short_description: "Reconstruct raster logos as native SVGs"
+  default_prompt: "Use $raster-to-clean-svg to reconstruct this raster logo as a clean, editable SVG and validate the result."
