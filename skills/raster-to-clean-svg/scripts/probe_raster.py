@@ -110,22 +110,46 @@ def contour_inventory(mask_u8: np.ndarray, min_area: float) -> list[dict[str, ob
     return records
 
 
-def component_inventory(mask_u8: np.ndarray, min_area: int) -> list[dict[str, object]]:
-    count, _, stats, centroids = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+def hole_count(mask_u8: np.ndarray) -> int:
+    contours, hierarchy = cv2.findContours(mask_u8, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None or not contours:
+        return 0
+    holes = 0
+    for index in range(len(contours)):
+        depth = 0
+        parent = int(hierarchy[0, index, 3])
+        while parent >= 0:
+            depth += 1
+            parent = int(hierarchy[0, parent, 3])
+        if depth % 2 == 1:
+            holes += 1
+    return holes
+
+
+def component_inventory(mask_u8: np.ndarray, min_area: int, rgb: np.ndarray | None = None) -> list[dict[str, object]]:
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
     components: list[dict[str, object]] = []
     for label in range(1, count):
         x, y, width, height, area = map(int, stats[label])
         if area < min_area:
             continue
         center_x, center_y = centroids[label]
-        components.append(
-            {
-                "label": label,
-                "area": area,
-                "bounding_box": {"x": x, "y": y, "width": width, "height": height},
-                "centroid": [round(float(center_x), 3), round(float(center_y), 3)],
-            }
-        )
+        component_mask = labels == label
+        record: dict[str, object] = {
+            "label": label,
+            "area": area,
+            "bounding_box": {"x": x, "y": y, "width": width, "height": height},
+            "centroid": [round(float(center_x), 3), round(float(center_y), 3)],
+            "holes": hole_count(component_mask.astype(np.uint8) * 255),
+        }
+        if rgb is not None:
+            kernel_size = max(3, min(11, 2 * (min(width, height) // 20) + 1))
+            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+            interior = cv2.erode(component_mask.astype(np.uint8), kernel).astype(bool)
+            sample_mask = interior if np.any(interior) else component_mask
+            record["median_interior_color"] = color_hex(np.median(rgb[sample_mask], axis=0))
+            record["interior_erosion_kernel"] = kernel_size
+        components.append(record)
     components.sort(key=lambda item: int(item["area"]), reverse=True)
     return components
 
@@ -166,16 +190,20 @@ def main() -> int:
         raise SystemExit("Corner size and thresholds must be non-negative; --min-alpha must be between 0 and 1")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    image = Image.open(args.input).convert("RGB")
-    rgb = np.asarray(image, dtype=np.float32)
+    source_image = Image.open(args.input).convert("RGBA")
+    rgba = np.asarray(source_image, dtype=np.uint8)
+    image = source_image.convert("RGB")
+    rgb = rgba[..., :3].astype(np.float32)
+    source_alpha = rgba[..., 3].astype(np.float32) / 255.0
+    has_transparency = bool(np.any(rgba[..., 3] < 255))
     background = args.background if args.background is not None else estimate_background(rgb, args.corner_size)
     distance = np.linalg.norm(rgb - background, axis=2)
-    foreground = distance > args.threshold
+    foreground = source_alpha > 8.0 / 255.0 if has_transparency else distance > args.threshold
     mask_u8 = foreground.astype(np.uint8) * 255
 
     mask_path = args.out_dir / "foreground-mask.png"
     Image.fromarray(mask_u8).save(mask_path)
-    components = component_inventory(mask_u8, args.min_component_area)
+    components = component_inventory(mask_u8, args.min_component_area, rgb)
     overlay_path = args.out_dir / "components.png"
     write_component_overlay(image, components, overlay_path)
 
@@ -183,6 +211,8 @@ def main() -> int:
         "input": str(args.input.resolve()),
         "width": image.width,
         "height": image.height,
+        "has_transparency": has_transparency,
+        "foreground_mask_source": "alpha" if has_transparency else "background_color_distance",
         "estimated_background": color_hex(background),
         "foreground_threshold": args.threshold,
         "foreground_pixels": int(np.count_nonzero(foreground)),
@@ -201,7 +231,11 @@ def main() -> int:
         alpha_stack: list[np.ndarray] = []
         residual_stack: list[np.ndarray] = []
         for fill in args.fill:
-            alpha, residual = alpha_and_residual(rgb, background, fill)
+            if has_transparency:
+                alpha = source_alpha
+                residual = np.linalg.norm(rgb - fill, axis=2)
+            else:
+                alpha, residual = alpha_and_residual(rgb, background, fill)
             alpha_stack.append(alpha)
             residual_stack.append(residual)
         alphas = np.stack(alpha_stack, axis=2)
@@ -222,7 +256,7 @@ def main() -> int:
                     "fill": fill_hex,
                     "pixels": int(np.count_nonzero(selected)),
                     "mask": str(fill_path.resolve()),
-                    "components": component_inventory(selected.astype(np.uint8) * 255, args.min_component_area),
+                    "components": component_inventory(selected.astype(np.uint8) * 255, args.min_component_area, rgb),
                 }
             )
         report["known_fill_masks"] = known_fill_records

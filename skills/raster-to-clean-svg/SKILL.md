@@ -7,7 +7,7 @@ metadata:
 
 # Reconstruct raster artwork as clean SVG
 
-Recover the visible design as intentional SVG geometry. Measure the raster, choose semantic primitives, build the SVG, render it at the original size, compare it with the source, and iterate. Do not treat an autotrace or a PNG wrapped in `<image>` as a successful result.
+Recover the visible design as intentional SVG geometry. Treat the task as inverse vector graphics: infer the simplest design system that could have generated the pixels, reconstruct that system, render it at the original size, compare it with the source, and iterate. Do not treat an autotrace or a PNG wrapped in `<image>` as a successful result.
 
 ## Non-negotiable rules
 
@@ -27,6 +27,7 @@ Recover the visible design as intentional SVG geometry. Measure the raster, choo
 3. Create a task-local working directory for masks, renders, and diagnostics. Keep these intermediate files out of the final deliverables unless the user asks for them.
 4. Read [references/reconstruction-method.md](references/reconstruction-method.md) before measuring or fitting geometry. It contains the core recovered formulas, SVG patterns, worked archetypes, and metric interpretation.
 5. Read [references/advanced-fitting.md](references/advanced-fitting.md) when the artwork contains elliptical rings, organic closed blades, mixed sharp-and-curved rails, subtle spatial gradients, or geometry that needs component-specific fitting.
+6. Read [references/generalization-playbook.md](references/generalization-playbook.md) when choosing between competing models, diagnosing structured residuals, handling typography, perspective, pixel art, low-resolution or compressed sources, occlusion, woven marks, translucent layers, texture, or planning multi-background, multi-scale, and multi-renderer validation.
 
 ## Measure the raster
 
@@ -48,21 +49,23 @@ Use the report, masks, component overlay, and visual inspection together. Measur
 
 Use the simplest primitive that preserves the visible contour:
 
-| Raster structure | Preferred SVG model |
-|---|---|
-| Axis-aligned or rotated rounded tile | `<rect rx>` with an optional rotation |
-| Circular node or dot | `<circle>` or `<ellipse>` |
-| Ring or shape with a true hole | Compound `<path fill-rule="evenodd">` |
-| Gapped circular or elliptical annulus | Independently fitted outer and inner SVG `A` arcs |
-| Smooth organic closed blade | Periodic cubic B-spline converted to closed cubic Béziers |
-| Rail with sharp tips, notches, and long curves | Semantically segmented, piecewise Bézier path |
-| Chevron, ribbon, blade, fold, or irregular cap | Closed filled Bézier path |
-| Branch fused into a tile | One continuous path, not overlapping pieces that can form seams |
-| Layered folded mark | Several simple paths in visual stacking order |
-| Real smooth color variation | Small `userSpaceOnUse` linear or radial gradient |
-| Real soft shadow | Low-opacity vector duplicate and a narrowly bounded blur filter |
+| Raster structure                               | Preferred SVG model                                             |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| Axis-aligned or rotated rounded tile           | `<rect rx>` with an optional rotation                           |
+| Circular node or dot                           | `<circle>` or `<ellipse>`                                       |
+| Ring or shape with a true hole                 | Compound `<path fill-rule="evenodd">`                           |
+| Gapped circular or elliptical annulus          | Independently fitted outer and inner SVG `A` arcs               |
+| Smooth organic closed blade                    | Periodic cubic B-spline converted to closed cubic Béziers       |
+| Rail with sharp tips, notches, and long curves | Semantically segmented, piecewise Bézier path                   |
+| Chevron, ribbon, blade, fold, or irregular cap | Closed filled Bézier path                                       |
+| Branch fused into a tile                       | One continuous path, not overlapping pieces that can form seams |
+| Layered folded mark                            | Several simple paths in visual stacking order                   |
+| Real smooth color variation                    | Small `userSpaceOnUse` linear or radial gradient                |
+| Real soft shadow                               | Low-opacity vector duplicate and a narrowly bounded blur filter |
 
 Prefer filled outlines over stroked polylines when line caps, joins, turns, or local width changes do not match the raster. Create negative space by leaving an area unpainted or by using a compound path; avoid painting white shapes unless the source truly contains a white layer.
+
+Escalate through primitive, transformed/repeated primitive, compound or Boolean structure, parametric curve, piecewise Bézier, periodic spline, and only then general contour fitting. Accept a more complex model when the simpler one leaves a coherent visible residual, not merely because a scalar score improves fractionally.
 
 ## Build and refine
 
@@ -83,7 +86,7 @@ Run the validator against the source raster:
 uv run scripts/validate_svg.py candidate.svg --reference reference.png --out-dir work/validation
 ```
 
-The validator parses XML, detects forbidden raster/script content and external references, rasterizes at source dimensions with CairoSVG when available or the portable `resvg_py` fallback, reports element counts, and produces MAE, SSIM, foreground-mask IoU, matched connected-component IoU, eroded-interior color MAE, side-by-side, difference, and XOR diagnostics.
+The validator parses XML, detects forbidden raster/script content, non-finite attributes, and external references, rasterizes at source dimensions with CairoSVG when available or the portable `resvg_py` fallback, reports element counts, and produces MAE, SSIM, foreground-mask IoU, matched connected-component IoU, symmetric boundary median/p95/max distance, eroded-interior RGB MAE and CIEDE2000, side-by-side, amplified difference, and directional mask-difference diagnostics.
 
 Interpret the metrics carefully:
 
@@ -104,6 +107,8 @@ Provide the requested SVG variants and a rendered preview. If both transparent a
 - Paths are closed where intended and the SVG remains editable.
 - Gradients, filters, and masks exist only when visually justified.
 - Final renders were compared at the source size.
+- Transparent construction was inspected on light, dark, mid-gray, and checkerboard backgrounds when negative space, transparency, masks, filters, or overlaps make the result background-sensitive.
+- The artwork was also inspected at a practical small size and enlarged scale, and a second renderer was used for complex arcs, fills, strokes, masks, filters, clips, transforms, or `<use>` when portability matters.
 - Reported metrics come from the final files, not an earlier candidate.
 
 Use this concise completion report:
@@ -124,3 +129,4 @@ Limit: reconstructed from pixels; unavailable original nodes cannot be recovered
 - `scripts/validate_svg.py` — enforce native-vector checks, render the SVG, compute comparison metrics, and emit diagnostic images plus JSON.
 - `references/reconstruction-method.md` — load before reconstruction for formulas, code patterns, fitting strategies, worked archetypes, and failure modes.
 - `references/advanced-fitting.md` — load for topology-specific analytical arcs, periodic splines, piecewise paths, spatial gradient models, and component-specific validation.
+- `references/generalization-playbook.md` — load for model escalation, residual diagnosis, unseen topology/source playbooks, regularization, and broader validation strategy.

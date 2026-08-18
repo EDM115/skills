@@ -16,13 +16,13 @@
 
 Do not reduce every raster-to-SVG task to generic contour fitting. First classify the component's topology and meaningful geometric regions:
 
-| Topology | Preferred reconstruction model |
-|---|---|
-| Gapped circular or orbital ring with overlapping nodes | Independently fitted outer and inner ellipses exported as SVG elliptical arcs, plus layered ellipses for nodes |
-| Smooth organic closed blade with no meaningful corners | Smoothed subpixel contour, periodic cubic B-spline, then exact cubic Bézier conversion |
-| Rail containing long curves, sharp tips, angled edges, and concave notches | Semantic contour segmentation and piecewise Bézier fitting |
-| Rotated rounded tile | `minAreaRect` initialization followed by low-dimensional optimization while retaining `<rect rx transform>` |
-| Folded or overlapping mark | Several semantic vector layers rather than one traced union |
+| Topology                                                                   | Preferred reconstruction model                                                                                 |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Gapped circular or orbital ring with overlapping nodes                     | Independently fitted outer and inner ellipses exported as SVG elliptical arcs, plus layered ellipses for nodes |
+| Smooth organic closed blade with no meaningful corners                     | Smoothed subpixel contour, periodic cubic B-spline, then exact cubic Bézier conversion                         |
+| Rail containing long curves, sharp tips, angled edges, and concave notches | Semantic contour segmentation and piecewise Bézier fitting                                                     |
+| Rotated rounded tile                                                       | `minAreaRect` initialization followed by low-dimensional optimization while retaining `<rect rx transform>`    |
+| Folded or overlapping mark                                                 | Several semantic vector layers rather than one traced union                                                    |
 
 Use global smoothing only for shapes whose entire boundary is meant to be smooth. Preserve meaningful discontinuities and high-curvature regions through segmentation or analytical primitives.
 

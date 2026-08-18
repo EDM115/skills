@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 from pathlib import Path
 
@@ -62,7 +63,7 @@ def bspline_to_cubic_segments(tck: tuple[np.ndarray, np.ndarray, int]) -> list[t
     valid_end = len(coefficients_xy)
     breaks = np.unique(knots[degree : valid_end + 1])
     segments: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
-    for u0, u1 in zip(breaks[:-1], breaks[1:]):
+    for u0, u1 in itertools.pairwise(breaks):
         if u1 <= u0:
             continue
         delta = float(u1 - u0)
@@ -165,8 +166,8 @@ def main() -> int:
         "width": image.width,
         "height": image.height,
         "foreground_pixels": int(np.count_nonzero(component)),
-        "raw_contour_points": int(len(points)),
-        "cubic_segments": int(len(segments)),
+        "raw_contour_points": len(points),
+        "cubic_segments": len(segments),
         "sigma": args.sigma,
         "level": args.level,
         "smoothing": args.smoothing,
