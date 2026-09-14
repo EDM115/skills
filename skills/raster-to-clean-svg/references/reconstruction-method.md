@@ -273,6 +273,8 @@ Use global search only for a bounded, low-dimensional problem. Follow it with lo
 
 ## Compare raster and SVG
 
+For transparent sources, retain RGBA through loading and rendering. Compare alpha masks/opacity separately, then composite reference and candidate onto the same background for RGB metrics; hidden RGB under zero alpha is not visible evidence. The bundled validator implements this separation and accepts repeated `--comparison-background "#000000" --comparison-background "#808080"` values for appearance checks. Its `rendered.png` remains transparent; primary-background composites appear in the side-by-side and difference diagnostics. The example below illustrates a single opaque-background comparison, not alpha-geometry validation.
+
 Rasterize with CairoSVG at the exact reference dimensions:
 
 ```python
@@ -352,7 +354,7 @@ assert "data:image/" not in text.lower()
 assert "base64," not in text.lower()
 ```
 
-Also reject `<foreignObject>`, scripts, and external `href` values. Report primitive, gradient, and filter counts. Validate the final variants independently after packaging.
+Also reject `<foreignObject>`, scripts, and external `href` values. The snippet is only an illustration; use the bundled validator for root dimensions/viewBox, CSS resource inspection, and other native-content checks. Neither the snippet nor a passing preflight proves absence of empty/off-canvas geometry or establishes visual fidelity. Report primitive, gradient, and filter counts. Validate the final variants independently after packaging. Explicitly authorized hybrid output follows the separate [mode contract](../SKILL.md#output-contract-and-modes) and must not be reported as passing this native-only check.
 
 For a white-background variant, keep artwork unchanged and add only:
 

@@ -1,119 +1,33 @@
 ---
 name: rtk
-description: Must use whenever you're about to run a command in the terminal to have faster and more efficient output, all while reducing tokens in your context window
+description: Use when inspecting high-volume terminal output with RTK, choosing whether output can be safely compressed, or recovering details omitted by an RTK filter.
+compatibility: Requires the rtk executable and shell access. Uses explicit command invocation without requiring hooks.
 metadata:
   author: EDM115
-  version: "2026.9.1"
-  source: "Grabbed from https://github.com/rtk-ai/rtk/blob/develop/src/hooks/init.rs & improved"
+  version: "2026.9.14"
+  source: https://github.com/rtk-ai/rtk
 ---
 
-# RTK (Rust Token Killer) - Token-Optimized Commands
-## Golden Rule
-**Always prefix shell commands with `rtk`**. RTK filters and compresses command output before it reaches the LLM context, cutting up to 90% of the output on common operations. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use. RTK is also cross-platform, so it works in Windows and with cmd/pwsh.  
-In order to compress the output, RTK buffers it until the command finishes. If you rely on streaming output or monitor a long-running command (ex dev server) do NOT prefix it with `rtk`.  
-**Important**: Even in command chains with `&&`, use `rtk`:
+# RTK (Rust Token Killer)
+Use RTK to reduce noisy output intended for model inspection. Choose it per command according to who consumes the output and whether exact content matters. Invoke it explicitly in Codex; this workflow does not require a hook.
+## Choose filtered or raw output
+| Output use | Command choice |
+| --- | --- |
+| Noisy test results, status, logs, or search results read by the model | Use the supported RTK command when a summary is sufficient. |
+| Pipe to a parser, command substitution, variable assignment, or output redirected to an artifact | Run the original command unfiltered so downstream data stays intact. |
+| Exact JSON values, full source, patch content, compiler diagnostics, or byte-sensitive evidence | Use the original command or `rtk proxy <cmd>` for unfiltered output. |
+| Interactive process, live logs, or a long-running server | Run directly to preserve interaction and streaming. |
+| Small output, unsupported command, or RTK unavailable | Run directly; there is no need to install or configure RTK to finish the task. |
+Filtering can remove values, lines, and context. A filtered diff is useful for orientation but is not an apply-ready patch. Read source and evidence unfiltered when omitted details could change a decision. Shell quoting, redirection, and pipeline semantics still belong to the host shell; do not prefix an entire compound expression mechanically.
+## Discover the installed interface
+Check `rtk --help` when availability or supported syntax is unknown, and use subcommand help for version-specific options. Keep the project's runtime and package-manager environment intact. RTK changes presentation; it grants no additional permission to execute the underlying command.
 ```bash
-# ❌ Wrong
-git add . && git commit -m "msg" && git push
-
-# ✅ Correct
-rtk git add . && rtk git commit -m "msg" && rtk git push
+rtk git status                  # Compact working-tree overview
+rtk git diff                    # Summary for inspection, not a patch artifact
+rtk grep "pattern" .            # Grouped search results
+rtk test <cmd>                  # Noisy completed test output for inspection
+rtk proxy git diff              # Full diff without RTK filtering
+git diff > change.patch         # Raw artifact for downstream tools
 ```
-## RTK Commands by Workflow
-### Meta Commands
-```bash
-rtk gain           # View token savings statistics
-rtk gain --history # View command history with savings
-rtk proxy <cmd>    # Run command without filtering
-rtk discover       # Analyze Claude Code sessions for missed RTK usage
-rtk --help         # Show all other commands available
-```
-### Files & Search (60-75% savings)
-```bash
-rtk ls <path>
-rtk read <file>       # Code reading with filtering
-rtk grep/rg <pattern>
-rtk find <pattern>
-```
-### Analysis & Debug (70-90% savings)
-```bash
-rtk err <cmd>     # Filter errors only from any command
-rtk log <file>    # Deduplicated logs with counts
-rtk json <file>   # JSON structure without values
-rtk deps          # Dependency overview
-rtk env           # Environment variables compact
-rtk summary <cmd> # Smart summary of command output
-rtk diff          # Ultra-compact diffs
-```
-### Build & Compile (80-90% savings)
-```bash
-rtk cargo build
-rtk cargo check
-rtk cargo clippy
-rtk tsc
-rtk lint             # ESLint
-rtk format           # Prettier, black, ruff
-rtk prettier --check
-rtk next build
-```
-### Test (90-99% savings)
-```bash
-rtk cargo test
-rtk go test
-rtk jest
-rtk vitest
-rtk playwright test
-rtk pytest
-rtk rake test
-rtk rspec
-rtk test <cmd>
-```
-### Git (59-80% savings)
-```bash
-rtk git status
-rtk git log
-rtk git diff
-rtk git show
-rtk git add
-rtk git commit
-rtk git push
-rtk git pull
-rtk git branch
-rtk git fetch
-rtk git stash
-rtk git worktree
-```
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
-### GitHub (26-87% savings)
-```bash
-rtk gh pr view <num>
-rtk gh pr checks
-rtk gh run list
-rtk gh issue list
-rtk gh api
-```
-### JavaScript/TypeScript/Python Tooling (70-90% savings)
-```bash
-rtk pnpm list
-rtk pnpm outdated
-rtk pnpm install
-rtk pnpm run <script> # Avoid issues compared to without "run"
-rtk npm run <script>
-rtk npx <cmd>
-rtk uv run <cmd>
-rtk ruff
-rtk pip install
-```
-### Network (65-70% savings)
-```bash
-rtk curl <url>
-rtk wget <url>
-```
-### Infrastructure (85% savings)
-```bash
-rtk docker ps
-rtk docker images
-rtk docker logs <c>
-rtk kubectl get
-rtk kubectl logs
-```
+## Recover missing evidence
+If a summary hides the detail needed to diagnose a failure, first read any available raw log. Otherwise rerun the smallest safe read or check without filtering. Establish whether a side-effecting command already ran before retrying it; a wrapper error is not proof that the underlying operation did nothing. Report the actual command outcome, not an inference from a shortened success summary.

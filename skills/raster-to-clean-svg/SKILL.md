@@ -1,132 +1,77 @@
 ---
 name: raster-to-clean-svg
-description: Use this skill to reconstruct a raster logo, icon, glyph, or flat illustration from PNG, JPEG, or WebP as a clean, editable, native SVG. Trigger when the user wants faithful geometry, colors, curves, gradients, shadows, or transparent and white-background variants; forbids ImageGen or generic autotracing; requires no embedded raster; or asks for quantitative raster-versus-SVG validation.
+description: Use when reconstructing a raster logo, icon, glyph, or flat illustration as a faithful, editable native SVG, or when validating its geometry, colors, transparency, and raster-versus-vector fidelity.
 metadata:
   author: EDM115
 ---
 
 # Reconstruct raster artwork as clean SVG
+Infer the simplest design system that explains the pixels, rebuild it as intentional geometry, and compare an exact-size render with the source. Preserve domain structure rather than tracing export noise.
 
-Recover the visible design as intentional SVG geometry. Treat the task as inverse vector graphics: infer the simplest design system that could have generated the pixels, reconstruct that system, render it at the original size, compare it with the source, and iterate. Do not treat an autotrace or a PNG wrapped in `<image>` as a successful result.
+## Output contract and modes
+- Keep the source raster immutable. Use its width and height as the SVG `viewBox` whenever practical so one unit equals one source pixel.
+- **Native-vector mode is the default:** deliver editable primitives and deliberate paths, with no embedded raster, `<image>`, Base64 payloads, or external image dependencies. Preserve true holes, negative space, layer order, and intentional gradients/shadows. Respect a user's statement that fills are plain.
+- **Hybrid output is outside native-vector mode:** use it only when the user explicitly requests or permits raster-backed texture. Existing explicit permission is sufficient; disclose which parts are raster-backed and that the result is not fully native vector. The bundled validator enforces native mode and rejects hybrid files; do not bypass it or label hybrid output as passing native checks. Validate authorized hybrid XML, dependencies, dimensions, and rendered appearance separately with an appropriate renderer.
+- Use local reconstruction for this native-SVG task. Do not substitute ImageGen or generic autotracing for editable geometry. Follow an explicit change in the user's requested output mode.
+- Validate syntax and appearance before handoff. Describe the result as reconstructed visible design; original control points and layer metadata cannot be recovered from pixels alone.
 
-## Non-negotiable rules
-
-- Keep the source raster immutable.
-- Use the source width and height as the SVG `viewBox` whenever practical so one SVG unit equals one source pixel.
-- Do not use ImageGen unless the user explicitly reverses that constraint.
-- Do not embed raster data, external images, Base64 payloads, or `<image>` elements.
-- Prefer a small number of editable `<rect>`, `<circle>`, `<ellipse>`, gradient, and deliberate `<path>` elements over contour noise.
-- Reconstruct visual appearance, layer order, and negative space. Do not claim to recover unavailable original control points or layer metadata.
-- Distinguish intentional gradients and shadows from antialiasing, compression, and resampling artifacts. Respect a user's statement that colors are plain.
-- Validate both syntax and appearance before calling the result complete.
-
-## Prepare the work
-
-1. Inspect the raster visually, including zoomed crops. Record its pixel dimensions, background behavior, visible components, likely symmetries, repeated dimensions, colors, and layer order.
-2. Decide which deliverables are required: transparent SVG, on-white SVG, preview PNG, comparison images, and optional ZIP.
-3. Create a task-local working directory for masks, renders, and diagnostics. Keep these intermediate files out of the final deliverables unless the user asks for them.
-4. Read [references/reconstruction-method.md](references/reconstruction-method.md) before measuring or fitting geometry. It contains the core recovered formulas, SVG patterns, worked archetypes, and metric interpretation.
-5. Read [references/advanced-fitting.md](references/advanced-fitting.md) when the artwork contains elliptical rings, organic closed blades, mixed sharp-and-curved rails, subtle spatial gradients, or geometry that needs component-specific fitting.
-6. Read [references/generalization-playbook.md](references/generalization-playbook.md) when choosing between competing models, diagnosing structured residuals, handling typography, perspective, pixel art, low-resolution or compressed sources, occlusion, woven marks, translucent layers, texture, or planning multi-background, multi-scale, and multi-renderer validation.
-
-## Measure the raster
-
-Run the bundled probe when Python and `uv` are available:
-
-```bash
-uv run scripts/probe_raster.py reference.png --out-dir work/probe
-```
-
-For known solid fills, pass each expected color so the probe classifies antialiased edge pixels by alpha reconstruction instead of exact RGB equality:
-
-```bash
-uv run scripts/probe_raster.py reference.png --out-dir work/probe --fill "#01E2F1" --fill "#0161FA" --fill "#8148FA"
-```
-
-Use the report, masks, component overlay, and visual inspection together. Measurements are evidence, not an automatic tracing result. Tune `--threshold`, `--corner-size`, and `--residual-threshold` when the background is textured, compressed, or not close to uniform.
+## Reconstruction loop
+1. **Inspect:** view the source and necessary crops; establish dimensions, transparency/background, components, colors, repeated geometry, symmetries, and stacking. Derive requested variants from the brief. Keep task-local masks/renders separate from deliverables.
+2. **Model:** choose topology before fitting coordinates, using the table below. For a simple solid circle or rounded tile, direct center/radius/bounds measurements can be enough; the probe and detailed references are optional when they would not resolve uncertainty.
+3. **Build:** establish main anchors and large silhouettes, then holes and internal layers. Share parameters for repeated elements. Use lines for straight spans and a small number of Bézier nodes for bends. Fit low-dimensional parameters instead of hundreds of contour points.
+4. **Compare:** render at the original dimensions, inspect side-by-side, directional mask differences, and zoomed residuals. For transparent sources compare alpha geometry separately from RGB appearance composited onto identical backgrounds.
+5. **Refine:** fix silhouette, placement/scale, spacing, corners/caps, overlaps, then colors and effects. Escalate model complexity only for coherent visible residuals. Stop when meaningful discrepancies are resolved and remaining differences are attributable to source uncertainty or rasterizer antialiasing; document those limits instead of chasing a universal metric threshold.
 
 ## Choose geometry deliberately
+| Raster structure | Preferred SVG model |
+| --- | --- |
+| Rounded tile, rotated or repeated | `<rect rx>` with transforms/shared dimensions |
+| Circular node or dot | `<circle>` or `<ellipse>` |
+| True hole or ring | Compound `<path fill-rule="evenodd">` |
+| Gapped circular/elliptical annulus | Independently fitted inner and outer `A` arcs |
+| Smooth organic closed blade | Periodic spline converted to closed cubic Béziers |
+| Sharp tips/notches joined to long curves | Semantically segmented piecewise Bézier path |
+| Fused branch and tile | One continuous path to avoid seams |
+| Folded/layered mark | Simple closed paths in visual stacking order |
+| Intentional color variation or soft shadow | Small gradient or low-opacity vector duplicate with bounded blur |
+Prefer filled outlines when stroke caps, joins, or varying widths cannot explain the source. Leave negative space unpainted or form a true hole; a white knockout changes a transparent design. Escalate from primitives through transformed/repeated and compound geometry to parametric curves, piecewise Béziers, periodic splines, and finally contour fitting.
 
-Use the simplest primitive that preserves the visible contour:
-
-| Raster structure                               | Preferred SVG model                                             |
-| ---------------------------------------------- | --------------------------------------------------------------- |
-| Axis-aligned or rotated rounded tile           | `<rect rx>` with an optional rotation                           |
-| Circular node or dot                           | `<circle>` or `<ellipse>`                                       |
-| Ring or shape with a true hole                 | Compound `<path fill-rule="evenodd">`                           |
-| Gapped circular or elliptical annulus          | Independently fitted outer and inner SVG `A` arcs               |
-| Smooth organic closed blade                    | Periodic cubic B-spline converted to closed cubic Béziers       |
-| Rail with sharp tips, notches, and long curves | Semantically segmented, piecewise Bézier path                   |
-| Chevron, ribbon, blade, fold, or irregular cap | Closed filled Bézier path                                       |
-| Branch fused into a tile                       | One continuous path, not overlapping pieces that can form seams |
-| Layered folded mark                            | Several simple paths in visual stacking order                   |
-| Real smooth color variation                    | Small `userSpaceOnUse` linear or radial gradient                |
-| Real soft shadow                               | Low-opacity vector duplicate and a narrowly bounded blur filter |
-
-Prefer filled outlines over stroked polylines when line caps, joins, turns, or local width changes do not match the raster. Create negative space by leaving an area unpainted or by using a compound path; avoid painting white shapes unless the source truly contains a white layer.
-
-Escalate through primitive, transformed/repeated primitive, compound or Boolean structure, parametric curve, piecewise Bézier, periodic spline, and only then general contour fitting. Accept a more complex model when the simpler one leaves a coherent visible residual, not merely because a scalar score improves fractionally.
-
-## Build and refine
-
-1. Select a topology-appropriate model before fitting. Do not treat every component as the same contour-smoothing problem.
-2. Establish the main anchors from contour extrema, line fits, centroids, repeated spacing, symmetry, and primitive bounds.
-3. Build large silhouettes first. Add internal layers, holes, gradients, and shadows only after the outer geometry is stable.
-4. Use cubic Bézier curves only where the contour bends. Keep long straight edges as lines and minimize nodes.
-5. Parameterize repeated dimensions and uncertain control points. For regular geometry, optimize a small parameter vector against mask XOR or per-component IoU; do not optimize hundreds of raw contour points.
-6. Rasterize every meaningful candidate at the exact source dimensions. Avoid comparing after arbitrary resizing because it adds another resampling layer.
-7. Inspect the original and candidate side by side, then inspect the XOR mask, amplified pixel difference, and zoomed problem areas.
-8. Refine in this order: overall silhouette, placement and scale, component spacing, corner radii and cap shapes, internal overlaps, colors, then subtle gradients or shadows.
-
-## Validate the candidate
-
-Run the validator against the source raster:
-
+## Load resources when needed
+Resolve the following paths relative to this skill's directory, not the user's project. With `uv`, the scripts declare their own dependencies; otherwise use a compatible Python environment with those dependencies installed.
+| Need | Resource |
+| --- | --- |
+| Measurement formulas, alpha-aware fill estimation, fitting examples, or metric interpretation | [reconstruction-method.md](references/reconstruction-method.md) |
+| Elliptical arcs, organic closed contours, mixed sharp/curved rails, or spatial gradients | [advanced-fitting.md](references/advanced-fitting.md) |
+| Competing models, structured residuals, typography, perspective, pixel art, occlusion, woven/translucent marks, or texture | [generalization-playbook.md](references/generalization-playbook.md) |
+| Background estimate, masks, components, contours, and dominant interior colors | `scripts/probe_raster.py` |
+| One smooth organic binary component needing a periodic spline | `scripts/fit_closed_contour.py` |
+| Native-vector preflight, exact-size render, quantitative comparison, and diagnostics | `scripts/validate_svg.py` |
+Read only the reference needed for the current uncertainty. Preserve specialist formulas and examples in the references rather than loading them for every reconstruction.
 ```bash
+uv run scripts/probe_raster.py reference.png --out-dir work/probe
+uv run scripts/probe_raster.py reference.png --out-dir work/probe --fill "#01E2F1" --fill "#0161FA"
 uv run scripts/validate_svg.py candidate.svg --reference reference.png --out-dir work/validation
+uv run scripts/validate_svg.py candidate.svg --reference reference.png --out-dir work/validation --comparison-background "#000000" --comparison-background "#808080"
 ```
+Known `--fill` colors enable alpha/residual classification of antialiased pixels. Probe masks are evidence, not automatic vector geometry. Use script `--help` for thresholds and fitting options when needed.
+The validator preserves alpha in `rendered.png`. For transparent references it defaults to a white appearance background and alpha-based geometry (`--alpha-threshold`, default 0); for opaque references it estimates a background and uses RGB-distance masks. `--background` overrides the primary appearance background, and repeated `--comparison-background` values add MAE/SSIM records without changing the geometry comparison. Checkerboard inspection remains a separate visual check.
+For reliable pixel sizing, supply `--reference` or a source-sized `viewBox`. Without either, standalone size inference uses numeric width/height magnitudes and does not convert physical or relative units into pixels.
 
-The validator parses XML, detects forbidden raster/script content, non-finite attributes, and external references, rasterizes at source dimensions with CairoSVG when available or the portable `resvg_py` fallback, reports element counts, and produces MAE, SSIM, foreground-mask IoU, matched connected-component IoU, symmetric boundary median/p95/max distance, eroded-interior RGB MAE and CIEDE2000, side-by-side, amplified difference, and directional mask-difference diagnostics.
-
-Interpret the metrics carefully:
-
-- Use full-image MAE to detect broad color or background errors.
-- Treat full-image SSIM as secondary for logos with large uniform backgrounds.
-- Use foreground IoU for overall silhouette agreement.
-- Prefer per-component IoU and zoomed visual inspection when geometry is composed of separate regular parts.
-- Use eroded-interior color MAE to judge fills and gradients without conflating them with renderer-specific edge antialiasing.
-- Do not invent a universal pass threshold. A visually faithful, editable reconstruction with a few antialiasing differences can be better than a noisy high-node trace with a slightly better pixel score.
-
-## Deliver
-
-Provide the requested SVG variants and a rendered preview. If both transparent and white variants are needed, keep the artwork identical and add only a background rectangle to the white version. Before handoff, verify:
-
-- XML parses successfully.
-- The `viewBox` and output dimensions match the source.
-- No `<image>`, `<foreignObject>`, script, data-image URI, Base64 raster, or external `href` exists.
-- Paths are closed where intended and the SVG remains editable.
-- Gradients, filters, and masks exist only when visually justified.
-- Final renders were compared at the source size.
-- Transparent construction was inspected on light, dark, mid-gray, and checkerboard backgrounds when negative space, transparency, masks, filters, or overlaps make the result background-sensitive.
-- The artwork was also inspected at a practical small size and enlarged scale, and a second renderer was used for complex arcs, fills, strokes, masks, filters, clips, transforms, or `<use>` when portability matters.
-- Reported metrics come from the final files, not an earlier candidate.
-
-Use this concise completion report:
-
+## Validation and delivery
+The native validator performs a structural preflight before rendering with CairoSVG or the portable `resvg_py` fallback. It reports alpha-aware foreground IoU, one-to-one component matches, boundary distances, composited RGB MAE/SSIM, and interior color error, plus JSON and diagnostic images. Check its reported violations and comparison settings; this is a reconstruction checker, not a general-purpose SVG sanitizer or proof that all geometry is sensible.
+Preflight checks root dimensions/viewBox, forbidden content, external hrefs and CSS URL/import resources, and non-finite numeric attribute markers. Local fragment URLs and ordinary inline styles are supported; malformed CSS, XML base declarations, DTD/entities, and external stylesheet instructions are rejected. A successful exit indicates native preflight and rendering succeeded, not that fidelity met a threshold. SSIM is unavailable (`null`) for canvases smaller than three pixels on either axis.
+- Judge silhouette with foreground/component IoU and boundary median/p95/max; inspect unmatched components and local residuals. Large blank backgrounds can inflate SSIM.
+- Judge fills with eroded-interior RGB MAE and CIEDE2000. Keep alpha/opacity errors distinct from background-composited appearance and renderer-specific edge differences.
+- Inspect background-sensitive artwork on light, dark, mid-gray, and checkerboard backgrounds. Inspect a practical small size and enlarged scale; use a second renderer when complex SVG features make portability material.
+- Confirm source-sized canvas, intended closed paths, sensible finite geometry, no accidental empty/off-canvas objects, and visually justified gradients/filters/masks. Structural success alone cannot establish these visual properties.
+- Generate requested transparent/white variants from identical artwork, adding only a white background rectangle. Validate final variants independently, including after packaging; report metrics from the final files.
+Provide requested SVGs and a preview; include comparisons or an archive when requested. For native output, use a concise completion report:
 ```text
 Canvas: <width> x <height>
 Composition: <primitive counts, gradients, filters>
 Native-vector checks: PASS/FAIL
-Comparison: MAE=<value>, SSIM=<value>, foreground IoU=<value>
+Comparison: <background and alpha/mask basis>, MAE=<value>, SSIM=<value>, foreground IoU=<value>
 Variants: <transparent, white, preview, archive>
-Limit: reconstructed from pixels; unavailable original nodes cannot be recovered literally
+Limit: <remaining source/renderer uncertainty; original nodes unavailable>
 ```
-
-## Bundled helpers
-
-- `scripts/probe_raster.py` — estimate background, create a foreground mask, inventory contours and connected components, estimate dominant interior colors, and optionally classify known solid fills through alpha/residual fitting.
-- `scripts/fit_closed_contour.py` — smooth one organic binary component, extract its subpixel half-coverage contour, fit a periodic cubic B-spline, and export equivalent editable SVG cubic Béziers.
-- `scripts/validate_svg.py` — enforce native-vector checks, render the SVG, compute comparison metrics, and emit diagnostic images plus JSON.
-- `references/reconstruction-method.md` — load before reconstruction for formulas, code patterns, fitting strategies, worked archetypes, and failure modes.
-- `references/advanced-fitting.md` — load for topology-specific analytical arcs, periodic splines, piecewise paths, spatial gradient models, and component-specific validation.
-- `references/generalization-playbook.md` — load for model escalation, residual diagnosis, unseen topology/source playbooks, regularization, and broader validation strategy.
+For explicitly authorized hybrid output, replace the native-check line with `Mode: hybrid; contains raster-backed <parts>; native-vector validation not applicable` and report the separate appearance/structural checks actually performed.

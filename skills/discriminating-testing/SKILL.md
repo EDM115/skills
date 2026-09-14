@@ -1,6 +1,6 @@
 ---
 name: discriminating-testing
-description: Design high-information tests that distinguish correct behavior from plausible wrong implementations. Use when implementing, modifying, debugging or reviewing nontrivial code; when writing unit, integration, property-based, fuzz, differential, snapshot, metamorphic or formal checks; or when a bug fix depends on subtle semantics, boundaries, ordering, state, encoding, arithmetic or protocol behavior.
+description: Use when designing or reviewing tests, investigating gaps in verification, or changing subtle semantics where plausible bugs could survive happy-path checks, such as boundaries, ordering, state, concurrency, encoding, arithmetic, or protocol behavior.
 metadata:
   author: EDM115
   source: https://danluu.com/agentic-testing/
@@ -10,16 +10,18 @@ metadata:
 Optimize for tests that catch plausible bugs, not for test count, framework usage or ritual compliance.
 
 ## Core rule
-For every important test, be able to answer:
+For each test of semantic correctness, be able to answer:
 1. What plausible mistake or alternative interpretation does this target?
 2. Would this exact input make the correct and wrong implementations behave differently?
-3. Is the expected result derived independently of the implementation under test?
+3. If it asserts an expected value, is that value derived independently of the implementation under test?
 
-If not, redesign or remove the test.
+If a semantic assertion cannot distinguish the intended behavior from the targeted mistake, redesign it or remove the redundant assertion. Smoke, compile/link, crash, deadlock, race, and resource-leak checks have their own observable contracts; retain useful checks without pretending they prove expected-value semantics.
+## Scope and effort
+Scope verification to the requested behavior and semantics affected by the change. Broaden only when evidence reveals a concrete related risk or the user requests a wider audit. A mechanical rename or reversible low-impact edit does not require new tests solely because it touches complex code. Reuse an existing test when it already distinguishes the relevant plausible failure.
 
 ## Workflow
 ### 1. Map the risk surface
-Before or while implementing, identify the few areas most likely to hide subtle bugs. Focus on semantics such as:
+Within that scope, identify the few areas most likely to hide subtle bugs. Focus on semantics such as:
 - ordering, association, reversal, indexing and mapping
 - boundaries and both sides of a boundary
 - state transitions and interactions between states
@@ -53,7 +55,7 @@ If an expected result is hard to derive, that is a signal to reason more careful
 
 ### 4. Use testing techniques for their leverage, not their names
 Choose a technique only when it improves discrimination against a concrete failure mode.
-- **Property/randomized testing:** generate structured, mostly valid inputs that reach interesting states. Bias toward boundaries, rare combinations and state transitions. Assert semantic properties, not only "does not crash". Use shrinking when available.
+- **Property/randomized testing:** generate structured, mostly valid inputs that reach interesting states. Bias toward boundaries, rare combinations and state transitions. For semantic correctness, assert semantic properties; a separate crash-resistance check is useful for its narrower contract. Use shrinking when available.
 - **Fuzzing:** avoid spending the budget on random bytes that all hit the same rejection path. Seed or construct valid structures, then mutate meaningful fields.
 - **Differential testing:** compare against a genuinely independent oracle or implementation. Shared logic, helpers, copied structure or the same interpretation twice are not independent.
 - **Metamorphic testing:** choose transformations related to risky semantics, not merely properties that are easy to state.
@@ -71,6 +73,7 @@ After implementation or a bug fix, inspect the risky areas again and ask:
 - Could the oracle contain the same misunderstanding as the implementation?
 
 Add or replace tests based on these answers. Do not add tests merely to increase coverage or count.
+For high-risk behavior, when cheap and within the permitted edit scope, test the test: introduce the specific plausible mutation in a disposable copy or isolated test harness and confirm the check fails for the intended reason. Examples include changing `<` to `<=`, swapping endian order, or dropping a retry-state reset. Remove the mutation immediately and confirm the correct version passes. This is optional; it does not require mutation-testing infrastructure or changing protected user edits.
 
 ## Anti-patterns
 Avoid these common agent failure modes:
@@ -84,5 +87,5 @@ Avoid these common agent failure modes:
 - treating the use of a named library or technique as evidence of test quality
 
 ## Completion criterion
-Before declaring correctness, ensure each high-risk semantic area has at least one test or check that would fail for a specific plausible wrong implementation, with an oracle that does not simply reuse that implementation's reasoning.  
-Prefer a small set of such tests over a large suite of low-information checks.
+Stop once the affected high-risk semantics have meaningful discriminating coverage and the relevant checks pass. Existing checks count; expected-value assertions need independent oracles. Report any unverified behavior at its actual scope.  
+Do not broaden or repeat testing solely for additional coverage or confidence. New changes, failures, or concrete unresolved risks justify further checks.

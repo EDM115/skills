@@ -103,7 +103,7 @@ With multiple translucent layers, order is part of the model. Fit geometry and a
 
 ### Shadows, glows, blur, texture, and painterly marks
 
-Keep a core geometry mask separate from an effect-inclusive visual mask. Rebuild intentional shadows or glows as separate low-opacity vector layers with bounded filters; never let blur redefine the core silhouette or conceal inaccurate geometry. For texture, first agree whether strict native SVG or hybrid output is required. Under a native-vector constraint, preserve recognizable structure and approximate texture with a small number of gradients, patterns, or filters rather than thousands of tiny paths. Embed raster texture only with explicit permission and disclose it.
+Keep a core geometry mask separate from an effect-inclusive visual mask. Rebuild intentional shadows or glows as separate low-opacity vector layers with bounded filters; never let blur redefine the core silhouette or conceal inaccurate geometry. Follow the [output modes in SKILL.md](../SKILL.md#output-contract-and-modes): native vector is the default, and an explicit user request for hybrid output supplies permission without reconfirmation. In native mode, preserve recognizable structure and approximate texture with a small number of gradients, patterns, or filters rather than thousands of tiny paths. Only explicitly authorized hybrid output may embed raster texture; disclose it and perform separate structural/appearance validation because the native validator intentionally rejects it.
 
 ## Validate several kinds of correctness
 
@@ -113,7 +113,7 @@ No single score proves a good reconstruction. Separate these checks:
 
 - Parse XML and test-render the SVG.
 - Confirm the `viewBox`, positive finite dimensions, and finite coordinates.
-- Reject forbidden `<image>`, Base64/data-image payloads, scripts, external references, empty geometry, and accidental off-canvas objects.
+- In native mode, reject `<image>`, Base64/data-image payloads, scripts, and external references using the bundled preflight. Its supported subset and diagnostics are not a general SVG sanitization guarantee. Inspect empty geometry and accidental off-canvas objects separately; a passing preflight does not prove their absence. Apply the separate hybrid contract only when explicitly authorized.
 - Keep a self-contained generator or verified numeric specification so the final asset does not depend on unsaved interactive state.
 
 ### Topological

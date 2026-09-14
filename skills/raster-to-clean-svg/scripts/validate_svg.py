@@ -7,6 +7,8 @@
 #   "pillow>=10",
 #   "resvg_py>=0.3,<1.0",
 #   "scikit-image>=0.22",
+#   "scipy>=1.11",
+#   "tinycss2>=1.2",
 # ]
 # ///
 
@@ -16,16 +18,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
+import tinycss2
 import cv2
 import numpy as np
 from PIL import Image
 from skimage.color import deltaE_ciede2000, rgb2lab
 from skimage.metrics import structural_similarity
+from scipy.optimize import linear_sum_assignment
 
 HEX_COLOR = re.compile(r"^#?([0-9a-fA-F]{6})$")
 FORBIDDEN_ELEMENTS = {"image", "foreignObject", "script"}
@@ -69,6 +74,31 @@ def href_is_external(value: str) -> bool:
     return bool(stripped) and not stripped.startswith("#")
 
 
+def css_resource_violations(css: str) -> list[str]:
+    """Inspect CSS tokens, including escaped URL/import names, before rendering."""
+    violations: list[str] = []
+    def visit(tokens):
+        for token in tokens:
+            if token.type == "error":
+                violations.append("malformed CSS resource syntax")
+            elif token.type == "at-keyword" and token.value.lower() == "import":
+                violations.append("CSS imports are unsupported")
+            elif token.type == "url":
+                if href_is_external(token.value):
+                    violations.append(f"external CSS URL: {token.value}")
+            elif token.type == "function":
+                if token.lower_name == "url":
+                    values = [item for item in token.arguments if item.type not in {"whitespace", "comment"}]
+                    if len(values) != 1 or values[0].type != "string" or href_is_external(values[0].value):
+                        violations.append("non-local or malformed CSS URL function")
+                else:
+                    visit(token.arguments)
+            elif hasattr(token, "content"):
+                visit(token.content)
+    visit(tinycss2.parse_component_value_list(css))
+    return violations
+
+
 def validate_native_svg(svg_path: Path) -> tuple[ET.ElementTree, dict[str, object]]:
     text = svg_path.read_text(encoding="utf-8")
     tree = ET.parse(svg_path)
@@ -80,12 +110,33 @@ def validate_native_svg(svg_path: Path) -> tuple[ET.ElementTree, dict[str, objec
     forbidden: list[str] = []
     external_references: list[str] = []
     non_finite_attributes: list[dict[str, str]] = []
+    resource_violations: list[str] = []
+    dimension_violations: list[str] = []
+    if re.search(r"<!DOCTYPE|<!ENTITY|<\?xml-stylesheet", text, re.IGNORECASE):
+        resource_violations.append("DTD, entities and external stylesheet instructions are unsupported")
+    if "viewBox" in root.attrib:
+        try:
+            values = [float(value) for value in root.attrib["viewBox"].replace(",", " ").split()]
+            if len(values) != 4 or not all(math.isfinite(value) for value in values) or values[2] <= 0 or values[3] <= 0:
+                raise ValueError
+        except ValueError:
+            dimension_violations.append("viewBox must contain four finite numbers with positive width and height")
+    for attribute in ("width", "height"):
+        if attribute in root.attrib:
+            match = re.fullmatch(r"\s*([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(?:px|pt|pc|mm|cm|in|em|ex|%)?\s*", root.attrib[attribute])
+            if not match or not math.isfinite(float(match[1])) or float(match[1]) <= 0:
+                dimension_violations.append(f"{attribute} must be a finite positive SVG length")
     for element in root.iter():
         name = local_name(element.tag)
         element_counts[name] += 1
+        if name == "style":
+            resource_violations.extend(css_resource_violations("".join(element.itertext())))
         if name in FORBIDDEN_ELEMENTS:
             forbidden.append(name)
         for attribute_name, attribute_value in element.attrib.items():
+            if local_name(attribute_name) == "base":
+                resource_violations.append("xml:base is unsupported")
+            resource_violations.extend(css_resource_violations(attribute_value))
             if (local_name(attribute_name) == "href" or attribute_name == XLINK_HREF) and href_is_external(attribute_value):
                 external_references.append(attribute_value)
             if NON_FINITE_NUMBER.search(attribute_value):
@@ -96,6 +147,8 @@ def validate_native_svg(svg_path: Path) -> tuple[ET.ElementTree, dict[str, objec
     lower_text = text.lower()
     text_violations = [needle for needle in ("data:image/", "base64,") if needle in lower_text]
     violations = []
+    violations.extend(sorted(set(resource_violations)))
+    violations.extend(dimension_violations)
     if forbidden:
         violations.append(f"forbidden elements: {sorted(set(forbidden))}")
     if external_references:
@@ -128,12 +181,17 @@ def infer_svg_size(root: ET.Element, fallback: tuple[int, int] = (1000, 1000)) -
     def numeric_dimension(value: str | None) -> int | None:
         if not value:
             return None
-        match = re.match(r"^\s*([0-9]+(?:\.[0-9]+)?)", value)
+        match = re.match(r"^\s*([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)", value)
         return max(1, round(float(match.group(1)))) if match else None
 
     width = numeric_dimension(root.attrib.get("width"))
     height = numeric_dimension(root.attrib.get("height"))
     return width or fallback[0], height or fallback[1]
+
+
+def composite_rgba(rgba: np.ndarray, background: np.ndarray) -> np.ndarray:
+    alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
+    return np.clip(np.rint(rgba[:, :, :3] * alpha + background * (1.0 - alpha)), 0, 255).astype(np.uint8)
 
 
 def save_side_by_side(original: np.ndarray, rendered: np.ndarray, path: Path) -> None:
@@ -191,36 +249,40 @@ def matched_component_ious(target: np.ndarray, candidate: np.ndarray, min_area: 
         for label in range(1, candidate_count)
         if int(candidate_stats[label, cv2.CC_STAT_AREA]) >= min_area
     }
+    target_ids = [label for label in range(1, target_count) if int(target_stats[label, cv2.CC_STAT_AREA]) >= min_area]
+    candidate_ids = list(candidate_masks)
+    scores = np.zeros((len(target_ids), len(candidate_ids)))
+    for row, label in enumerate(target_ids):
+        target_mask = target_labels == label
+        for column, candidate_label in enumerate(candidate_ids):
+            candidate_mask = candidate_masks[candidate_label]
+            scores[row, column] = np.count_nonzero(target_mask & candidate_mask) / np.count_nonzero(target_mask | candidate_mask)
+    rows, columns = linear_sum_assignment(scores, maximize=True)
+    assignments = {int(row): int(column) for row, column in zip(rows, columns) if scores[row, column] > 0}
     records: list[dict[str, object]] = []
-    for target_label in range(1, target_count):
-        area = int(target_stats[target_label, cv2.CC_STAT_AREA])
-        if area < min_area:
-            continue
-        target_mask = target_labels == target_label
-        best_label: int | None = None
-        best_iou = 0.0
-        for candidate_label, candidate_mask in candidate_masks.items():
-            intersection = int(np.count_nonzero(target_mask & candidate_mask))
-            union = int(np.count_nonzero(target_mask | candidate_mask))
-            iou = float(intersection / union) if union else 1.0
-            if iou > best_iou:
-                best_iou = iou
-                best_label = candidate_label
-        x, y, width, height, _ = map(int, target_stats[target_label])
-        records.append(
-            {
-                "target_label": target_label,
-                "target_area": area,
-                "target_bounding_box": {"x": x, "y": y, "width": width, "height": height},
-                "best_rendered_label": best_label,
-                "iou": round(best_iou, 8),
-            }
-        )
+    for row, target_label in enumerate(target_ids):
+        column = assignments.get(row)
+        x, y, width, height, area = map(int, target_stats[target_label])
+        records.append({
+            "target_label": target_label,
+            "target_area": area,
+            "target_bounding_box": {"x": x, "y": y, "width": width, "height": height},
+            "best_rendered_label": candidate_ids[column] if column is not None else None,
+            "iou": round(float(scores[row, column]), 8) if column is not None else 0.0,
+            "match_status": "matched" if column is not None else "unmatched_target",
+        })
     records.sort(key=lambda item: int(item["target_area"]), reverse=True)
+    for column, label in enumerate(candidate_ids):
+        if column not in assignments.values():
+            x, y, width, height, area = map(int, candidate_stats[label])
+            records.append({"target_label": None, "target_area": 0, "target_bounding_box": None,
+                            "best_rendered_label": label, "rendered_area": area,
+                            "rendered_bounding_box": {"x": x, "y": y, "width": width, "height": height},
+                            "iou": 0.0, "match_status": "unmatched_rendered"})
     return records
 
 
-def render_svg(svg_path: Path, output_path: Path, width: int, height: int, background: np.ndarray) -> str:
+def render_svg(svg_path: Path, output_path: Path, width: int, height: int) -> str:
     cairo_error: Exception | None = None
     try:
         import cairosvg
@@ -230,7 +292,7 @@ def render_svg(svg_path: Path, output_path: Path, width: int, height: int, backg
             write_to=str(output_path),
             output_width=width,
             output_height=height,
-            background_color=color_hex(background),
+            background_color=None,
         )
         return "CairoSVG"
     except (ImportError, OSError) as error:
@@ -243,7 +305,7 @@ def render_svg(svg_path: Path, output_path: Path, width: int, height: int, backg
             svg_path=str(svg_path),
             width=width,
             height=height,
-            background=color_hex(background),
+            background=None,
         )
         output_path.write_bytes(png_bytes)
         return "resvg_py"
@@ -258,8 +320,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("svg", type=Path, help="Candidate SVG")
     parser.add_argument("--reference", type=Path, help="Optional raster reference")
     parser.add_argument("--out-dir", type=Path, required=True, help="Directory for the report and diagnostics")
-    parser.add_argument("--background", type=parse_color, help="Comparison and render background as #RRGGBB")
+    parser.add_argument("--background", type=parse_color, help="Appearance comparison background as #RRGGBB (rendered.png preserves alpha)")
+    parser.add_argument("--comparison-background", type=parse_color, action="append", default=[], help="Additional appearance background as #RRGGBB; repeat for white, black, gray, etc.")
     parser.add_argument("--threshold", type=float, default=12.0, help="RGB distance from background for foreground masks")
+    parser.add_argument("--alpha-threshold", type=int, default=0, help="Alpha foreground threshold (0-254) for transparent references")
     parser.add_argument("--corner-size", type=int, default=15, help="Corner patch size for reference background estimation")
     parser.add_argument("--difference-gain", type=float, default=5.0, help="Gain for the amplified RGB difference image")
     parser.add_argument("--interior-kernel", type=int, default=9, help="Square erosion kernel for interior-only color MAE")
@@ -273,6 +337,8 @@ def main() -> int:
         raise SystemExit(f"SVG does not exist or is not a file: {args.svg}")
     if args.reference is not None and not args.reference.is_file():
         raise SystemExit(f"Reference does not exist or is not a file: {args.reference}")
+    if not 0 <= args.alpha_threshold <= 254 or not math.isfinite(args.threshold) or not math.isfinite(args.difference_gain):
+        raise SystemExit("Alpha threshold must be 0-254; numeric options must be finite")
     if args.threshold < 0 or args.corner_size < 1 or args.difference_gain < 0:
         raise SystemExit("Threshold and difference gain must be non-negative; corner size must be positive")
     if args.interior_kernel < 1 or args.min_component_area < 1:
@@ -282,12 +348,24 @@ def main() -> int:
     tree, native_report = validate_native_svg(args.svg)
     root = tree.getroot()
 
+    # Reject invalid resources/dimensions before size inference or invoking a renderer.
+    if not native_report["native_vector_pass"]:
+        report = {"svg": str(args.svg.resolve()), "renderer": None, **native_report, "diagnostics": {}}
+        (args.out_dir / "validation.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2))
+        return 2
+
     reference_rgb: np.ndarray | None = None
+    reference_rgba: np.ndarray | None = None
+    transparent_reference = False
     if args.reference is not None:
-        reference_image = Image.open(args.reference).convert("RGB")
-        reference_rgb = np.asarray(reference_image, dtype=np.uint8)
+        reference_image = Image.open(args.reference).convert("RGBA")
+        reference_rgba = np.asarray(reference_image, dtype=np.uint8)
+        transparent_reference = bool(np.any(reference_rgba[:, :, 3] < 255))
+        reference_rgb = reference_rgba[:, :, :3]
         width, height = reference_image.size
-        background = args.background if args.background is not None else estimate_background(reference_rgb.astype(np.float32), args.corner_size)
+        background = args.background if args.background is not None else (np.asarray([255, 255, 255], dtype=np.float32) if transparent_reference else estimate_background(reference_rgb.astype(np.float32), args.corner_size))
+        reference_rgb = composite_rgba(reference_rgba, background)
     else:
         width, height = infer_svg_size(root)
         background = args.background if args.background is not None else np.asarray([255, 255, 255], dtype=np.float32)
@@ -304,14 +382,10 @@ def main() -> int:
     }
 
     report_path = args.out_dir / "validation.json"
-    if not bool(native_report["native_vector_pass"]):
-        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps(report, indent=2))
-        return 2
-
     rendered_path = args.out_dir / "rendered.png"
-    renderer = render_svg(args.svg, rendered_path, width, height, background)
-    rendered_rgb = np.asarray(Image.open(rendered_path).convert("RGB"), dtype=np.uint8)
+    renderer = render_svg(args.svg, rendered_path, width, height)
+    rendered_rgba = np.asarray(Image.open(rendered_path).convert("RGBA"), dtype=np.uint8)
+    rendered_rgb = composite_rgba(rendered_rgba, background)
     report["renderer"] = renderer
     diagnostics = report["diagnostics"]
     assert isinstance(diagnostics, dict)
@@ -322,9 +396,14 @@ def main() -> int:
         rendered_float = rendered_rgb.astype(np.float32)
         absolute_difference = np.abs(reference_float - rendered_float)
         mae = float(np.mean(absolute_difference))
-        ssim = float(structural_similarity(reference_rgb, rendered_rgb, channel_axis=2, data_range=255))
+        window = min(7, min(reference_rgb.shape[:2]))
+        window -= 1 - window % 2
+        ssim = float(structural_similarity(reference_rgb, rendered_rgb, channel_axis=2, data_range=255, win_size=window)) if window >= 3 else None
         original_mask = np.linalg.norm(reference_float - background, axis=2) > args.threshold
         rendered_mask = np.linalg.norm(rendered_float - background, axis=2) > args.threshold
+        if transparent_reference:
+            original_mask = reference_rgba[:, :, 3] > args.alpha_threshold
+            rendered_mask = rendered_rgba[:, :, 3] > args.alpha_threshold
         intersection = int(np.count_nonzero(original_mask & rendered_mask))
         union = int(np.count_nonzero(original_mask | rendered_mask))
         iou = float(intersection / union) if union else 1.0
@@ -354,7 +433,10 @@ def main() -> int:
 
         report["metrics"] = {
             "mae_0_to_255": round(mae, 8),
-            "ssim": round(ssim, 8),
+            "ssim": round(ssim, 8) if ssim is not None else None,
+            "foreground_mask_basis": "alpha" if transparent_reference else "background_rgb_distance",
+            "alpha_threshold": args.alpha_threshold,
+            "alpha_mae_0_to_255": round(float(np.mean(np.abs(reference_rgba[:, :, 3].astype(float) - rendered_rgba[:, :, 3].astype(float)))), 8) if transparent_reference else None,
             "foreground_iou": round(iou, 8),
             "foreground_intersection_pixels": intersection,
             "foreground_union_pixels": union,
@@ -367,6 +449,23 @@ def main() -> int:
             "interior_pixels": interior_pixels,
             "interior_kernel": args.interior_kernel,
         }
+        appearance_backgrounds = [background, *args.comparison_background]
+        appearance_metrics = []
+        seen_backgrounds = set()
+        for appearance_background in appearance_backgrounds:
+            hex_background = color_hex(appearance_background)
+            if hex_background in seen_backgrounds:
+                continue
+            seen_backgrounds.add(hex_background)
+            original_appearance = composite_rgba(reference_rgba, appearance_background)
+            rendered_appearance = composite_rgba(rendered_rgba, appearance_background)
+            appearance_ssim = float(structural_similarity(original_appearance, rendered_appearance, channel_axis=2, data_range=255, win_size=window)) if window >= 3 else None
+            appearance_metrics.append({
+                "background": hex_background,
+                "mae_0_to_255": round(float(np.mean(np.abs(original_appearance.astype(float) - rendered_appearance.astype(float)))), 8),
+                "ssim": round(appearance_ssim, 8) if appearance_ssim is not None else None,
+            })
+        report["metrics"]["appearance_by_background"] = appearance_metrics
         diagnostics = report["diagnostics"]
         assert isinstance(diagnostics, dict)
         diagnostics.update(
