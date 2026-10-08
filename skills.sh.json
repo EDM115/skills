@@ -1,0 +1,16 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Unmaintained",
+      "description": "Skills that are deprecated",
+      "skills": [
+        "pyrofork-api",
+        "pyrofork-api-full-reference",
+        "pyrofork-best-practices",
+        "pyrofork-docs"
+      ]
+    }
+  ]
+}
