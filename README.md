@@ -1,6 +1,6 @@
 # `EDM115/skills`
 
-Skills generated for my own purpose, created because nobody made them before
+Skills & plugins created for my own purpose, because nobody made them before
 
 [![skills.sh](https://skills.sh/b/EDM115/skills)](https://skills.sh/EDM115/skills)
 
@@ -40,3 +40,9 @@ pnpx skills add EDM115/skills --skill raster-to-clean-svg
 | `pyrofork-docs`               | Use when working with Pyrofork (Pyrogram fork) in any Python project - setup/auth, client lifecycle, handlers/filters, async vs sync usage, plugins, raw MTProto API, formatting, storage/proxy/scheduling, Telegram-specific behavior, and troubleshooting common RPC/session/network errors.                 | https://github.com/Mayuri-Chan/pyrofork | Generated "manually", using [`skill-creator`](https://github.com/anthropics/skills/tree/main/skills/skill-creator), [`writing-skills`](https://github.com/obra/superpowers/tree/main/skills/writing-skills) & [`make-skill-template`](https://github.com/github/awesome-copilot/tree/main/skills/make-skill-template) |
 
 </details>
+
+## Plugins available
+
+| Name        | Description                                                                       | Source                                                                                                          | Notes                                                                                                                                        |
+| :---------- | :-------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BuyHelper` | In-depth, adaptable shopping assistant, helps you find the exact product you need | Generated from the [custom GPT](https://chat.openai.com/g/g-XhMtXftP9-buyhelper) I created on October 12th 2023 | The prompt has been refined over 16 times from what I could still get. Made as a plugin since custom GPTs will retire on December 11th 2026. |

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "author": {
+    "name": "EDM115",
+    "url": "https://edm115.dev"
+  },
+  "description": "In-depth, adaptable shopping assistant, helps you find the exact product you need",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "capabilities": [
+          "skills"
+        ],
+        "category": "shopping",
+        "composerIcon": "./assets/gpt-icon.png",
+        "defaultPrompt": [
+          "What type of product are you looking to purchase today ?",
+          "Can you describe the main features you're looking for ?",
+          "Are you considering any specific brands or models ?"
+        ],
+        "developerName": "EDM115",
+        "displayName": "BuyHelper",
+        "logo": "./assets/gpt-icon.png",
+        "longDescription": "BuyHelper is an intelligent and adaptable shopping assistant designed to help users find the best products for their needs, preferences and budget. It provides personalized recommendations, detailed product comparisons and expert purchasing advice across a wide range of categories. By combining extensive product knowledge with online research, BuyHelper helps users make informed and confident buying decisions.",
+        "shortDescription": "In-depth, adaptable shopping assistant, helps you find the exact product you need"
+      }
+    }
+  },
+  "name": "buyhelper",
+  "version": "1.0.0"
+}

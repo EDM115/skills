@@ -1,0 +1,4 @@
+interface:
+  default_prompt: What type of product are you looking to purchase today ?
+  display_name: BuyHelper
+  short_description: In-depth, adaptable shopping assistant, helps you find the exact
